@@ -8,7 +8,6 @@ import { useEffect } from "react";
 import { AuthProvider } from "../contexts/authProvider";
 import "react-native-reanimated";
 import Toast from "react-native-toast-message";
-import { HierarchyProvider } from "../contexts/hierarchyProvider";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -35,12 +34,10 @@ export default function RootLayout() {
 
   return (
     <AuthProvider>
-      <HierarchyProvider>
-        <GestureHandlerRootView>
-          <Slot />
-          <Toast />
-        </GestureHandlerRootView>
-      </HierarchyProvider>
+      <GestureHandlerRootView>
+        <Slot />
+        <Toast />
+      </GestureHandlerRootView>
     </AuthProvider>
   );
 }

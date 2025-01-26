@@ -1,63 +1,82 @@
-import React from "react";
-import { View, ScrollView, Dimensions } from "react-native";
-import ZoomableSvg from "../components/ZoomableSVG";
+import React, { useRef, useEffect, useState } from "react";
+import {
+  View,
+  ScrollView,
+  Dimensions,
+  TouchableOpacity,
+  StyleSheet,
+} from "react-native";
 import { Circle, Line, Text as SvgText } from "react-native-svg";
 import { COLORS } from "../constants";
+import {
+  useSharedValue,
+  withTiming,
+  configureReanimatedLogger,
+  ReanimatedLogLevel,
+} from "react-native-reanimated";
+import Entypo from "@expo/vector-icons/Entypo";
+import FontAwesome6 from "@expo/vector-icons/FontAwesome6";
+import ZoomableSvg from "../components/ZoomableSVG";
+import NodeAccordion from "./NodeAcordion";
+import { router } from "expo-router";
+
+import { TouchableWithoutFeedback } from "react-native-gesture-handler";
+
+configureReanimatedLogger({
+  level: ReanimatedLogLevel.warn,
+  strict: false,
+});
 
 const screenWidth = Dimensions.get("window").width / 2;
 const screenHeight = Dimensions.get("window").height / 2;
 
-const levelNumbers = {}; // Object to store the number for each level
+const levelNumbers = {};
 
 const calculateTreeLayout = (node, x, y, spacingX, spacingY, level = 0) => {
-  let nodeX = x;
+  let totalWidth = 0;
+  const childLayouts = [];
 
-  const childrenPositions = node.children.map((child, index) => {
-    const childX = nodeX + spacingX * index;
-    const childY = y + spacingY;
-    const result = calculateTreeLayout(
+  node.children.forEach((child) => {
+    const childLayout = calculateTreeLayout(
       child,
-      childX,
-      childY,
+      x + totalWidth,
+      y + spacingY,
       spacingX,
       spacingY,
       level + 1
     );
-    nodeX += result.width;
-    return result;
+    totalWidth += childLayout.width + spacingX;
+    childLayouts.push(childLayout);
   });
 
-  const nodeWidth =
-    childrenPositions.length > 0
-      ? childrenPositions.reduce((sum, child) => sum + child.width, 0)
-      : spacingX;
-
-  const nodeCenterX =
-    childrenPositions.length > 0
-      ? (childrenPositions[0].x +
-          childrenPositions[childrenPositions.length - 1].x) /
-        2
-      : x;
+  const subtreeWidth = totalWidth || spacingX;
+  const centerX = x + subtreeWidth / 2;
 
   return {
     node,
-    x: nodeCenterX,
+    x: centerX,
     y,
-    width: nodeWidth,
+    width: subtreeWidth,
     level,
-    children: childrenPositions,
+    children: childLayouts,
   };
 };
 
-const renderTree = (layout) => {
+const renderTree = (
+  layout,
+  currentNodeId,
+  blinkingOpacity,
+  activeAccordionId,
+  setActiveAccordionId
+) => {
   const { node, x, y, level, children } = layout;
 
-  // Assign a number to this level if not already assigned
   if (!levelNumbers[level]) {
     levelNumbers[level] = Object.keys(levelNumbers).length + 1;
   }
 
-  const levelNumber = levelNumbers[level];
+  const isCurrentNode = node._id === currentNodeId;
+  const isAccordionOpen = activeAccordionId === node._id;
 
   return (
     <React.Fragment key={node._id}>
@@ -68,56 +87,224 @@ const renderTree = (layout) => {
           y1={y}
           x2={child.x}
           y2={child.y}
-          stroke="black"
+          stroke={COLORS.background}
           strokeWidth={2}
         />
       ))}
 
-      {/* Node Circle */}
       <Circle
         cx={x}
         cy={y}
-        r={20}
+        r={10}
         fill={COLORS.background}
-        onPress={() => console.log(`Node: ${node.name}`)}
+        opacity={isCurrentNode ? blinkingOpacity.value : 1}
+        onPress={() => {
+          setActiveAccordionId(isAccordionOpen ? null : node._id);
+        }}
       />
+
+      {isAccordionOpen && (
+        <TouchableWithoutFeedback
+          onPress={() => {
+            router.push({
+              pathname: "/screens/NodeInformation",
+              params: { node: JSON.stringify(node) },
+            });
+          }}
+          style={[styles.accordionContainer, { top: y - 42, left: x - 85 }]}
+        >
+          <View style={styles.triangle} />
+          <NodeAccordion node={JSON.stringify(node)} />
+        </TouchableWithoutFeedback>
+      )}
+
       <SvgText x={x} y={y + 5} textAnchor="middle" fontSize="12" fill="#fff">
-        {levelNumber}
+        {levelNumbers[level]}
       </SvgText>
 
-      {/* Render Children */}
-      {children.map((child) => renderTree(child))}
+      {children.map((child) =>
+        renderTree(
+          child,
+          currentNodeId,
+          blinkingOpacity,
+          activeAccordionId,
+          setActiveAccordionId
+        )
+      )}
     </React.Fragment>
   );
 };
 
-const FamilyTree = ({ data }) => {
-  const spacingX = 70;
-  const spacingY = 70;
+const FamilyTree = ({ data, currentNodeId }) => {
+  const scale = useSharedValue(1);
+  const spacingX = 15;
+  const spacingY = 30;
+  const scrollViewRefX = useRef(null);
+  const scrollViewRefY = useRef(null);
+  const blinkingOpacity = useSharedValue(1);
+  const [activeAccordionId, setActiveAccordionId] = useState(null);
 
-  // Clear level numbers on every render
   for (const key in levelNumbers) delete levelNumbers[key];
 
-  // Build hierarchical layout
   const treeLayout = data.map((rootNode) =>
-    calculateTreeLayout(rootNode, screenWidth, screenHeight, spacingX, spacingY)
+    calculateTreeLayout(
+      rootNode,
+      screenWidth - data.length,
+      screenHeight,
+      spacingX,
+      spacingY
+    )
   );
 
+  useEffect(() => {
+    blinkingOpacity.value = withTiming(0, { duration: 500 }, (finished) => {
+      if (finished) {
+        blinkingOpacity.value = withTiming(1, { duration: 500 });
+      }
+    });
+  }, [currentNodeId]);
+
+  const findNodePosition = (layout, nodeId) => {
+    if (layout.node._id === nodeId) {
+      return { x: layout.x, y: layout.y };
+    }
+    for (const child of layout.children) {
+      const position = findNodePosition(child, nodeId);
+      if (position) return position;
+    }
+    return null;
+  };
+
+  const handleCurrentLocation = () => {
+    const nodePosition = treeLayout
+      .map((rootLayout) => findNodePosition(rootLayout, currentNodeId))
+      .find((pos) => pos !== null);
+
+    if (nodePosition) {
+      scale.value = withTiming(2, { duration: 400 });
+      scrollViewRefX.current?.scrollTo({
+        x: Math.max(0, nodePosition.x - screenWidth / (2 * scale.value)),
+        animated: true,
+      });
+      scrollViewRefY.current?.scrollTo({
+        y: Math.max(0, nodePosition.y - screenHeight / (2 * scale.value)),
+        animated: true,
+      });
+    }
+  };
+
   return (
-    <ScrollView
-      horizontal
-      contentContainerStyle={{
-        flexGrow: 1,
-        minWidth: 2000,
-      }}
-    >
-      <View style={{ flex: 1 }}>
-        <ZoomableSvg>
-          {treeLayout.map((rootLayout) => renderTree(rootLayout))}
-        </ZoomableSvg>
+    <>
+      <View style={styles.zoomControls}>
+        <TouchableOpacity
+          onPress={() => {
+            scale.value = Math.min(5, scale.value + 0.2);
+          }}
+        >
+          <Entypo name="circle-with-plus" color={COLORS.light} size={30} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => {
+            scale.value = Math.max(0.1, scale.value - 0.2);
+          }}
+        >
+          <Entypo name="circle-with-minus" color={COLORS.light} size={30} />
+        </TouchableOpacity>
       </View>
-    </ScrollView>
+
+      <TouchableOpacity
+        style={styles.locationButton}
+        onPress={handleCurrentLocation}
+      >
+        <FontAwesome6
+          name="location-crosshairs"
+          size={24}
+          color={COLORS.light}
+        />
+      </TouchableOpacity>
+      <TouchableWithoutFeedback onPress={() => setActiveAccordionId(null)}>
+        <ScrollView
+          ref={scrollViewRefX}
+          horizontal
+          contentContainerStyle={styles.scrollContent}
+        >
+          <ScrollView
+            ref={scrollViewRefY}
+            contentContainerStyle={styles.scrollContent}
+          >
+            <View style={{ flex: 1 }} pointerEvents="box-none">
+              <ZoomableSvg scale={scale}>
+                {treeLayout.map((rootLayout) =>
+                  renderTree(
+                    rootLayout,
+                    currentNodeId,
+                    blinkingOpacity,
+                    activeAccordionId,
+                    setActiveAccordionId
+                  )
+                )}
+              </ZoomableSvg>
+            </View>
+          </ScrollView>
+        </ScrollView>
+      </TouchableWithoutFeedback>
+    </>
   );
 };
+
+const styles = StyleSheet.create({
+  zoomControls: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    backgroundColor: COLORS.background,
+    borderRadius: 20,
+    gap: 5,
+    position: "absolute",
+    zIndex: 1,
+    right: 5,
+    top: 50,
+  },
+  locationButton: {
+    position: "absolute",
+    zIndex: 1,
+    right: 5,
+    bottom: 5,
+    backgroundColor: COLORS.background,
+    borderRadius: 20,
+    padding: 10,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    minWidth: 1000,
+    minHeight: 1000,
+  },
+  accordionContainer: {
+    position: "relative",
+    backgroundColor: COLORS.background,
+    borderRadius: 10,
+    padding: 5,
+    maxWidth: 180,
+    alignItems: "center",
+    zIndex: -10,
+    elevation: 10,
+  },
+  triangle: {
+    position: "absolute",
+    bottom: -10,
+    left: "50%",
+    transform: [{ translateX: -5 }],
+    width: 0,
+    height: 0,
+    borderStyle: "solid",
+    borderLeftWidth: 5,
+    borderRightWidth: 5,
+    borderBottomWidth: 10,
+    borderLeftColor: "transparent",
+    borderRightColor: "transparent",
+    borderBottomColor: COLORS.background,
+  },
+});
 
 export default FamilyTree;

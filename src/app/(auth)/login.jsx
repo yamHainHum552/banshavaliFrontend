@@ -1,5 +1,14 @@
 import React, { useState } from "react";
-import { View, Text, TextInput, ScrollView, StyleSheet } from "react-native";
+import {
+  View,
+  Text,
+  TextInput,
+  ScrollView,
+  StyleSheet,
+  TouchableOpacity,
+  ActivityIndicator,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import CustomButton from "../../components/CustomButton";
 import { Link, router } from "expo-router";
 import { COLORS, publicServer } from "../../constants";
@@ -9,11 +18,14 @@ import { useAuth } from "../../contexts/authProvider";
 
 const Login = () => {
   const { saveAuthData } = useAuth();
+  const [loading, setLoading] = useState(false);
 
   const [form, setForm] = useState({
     username: "",
     password: "",
   });
+
+  const [showPassword, setShowPassword] = useState(false);
 
   const onLoginPress = async () => {
     if (!form.username || !form.password) {
@@ -25,6 +37,7 @@ const Login = () => {
     }
 
     try {
+      setLoading(true);
       const response = await fetch(`${publicServer}/api/loginUser`, {
         method: "POST",
         headers: {
@@ -34,7 +47,6 @@ const Login = () => {
       });
 
       const data = await response.json();
-      console.log(data);
 
       if (!response.ok) {
         Toast.show({
@@ -58,6 +70,8 @@ const Login = () => {
         type: "error",
         text1: "Something went wrong. Please try again later.",
       });
+    } finally {
+      setLoading(true);
     }
   };
 
@@ -65,7 +79,10 @@ const Login = () => {
     <ScrollView style={styles.container}>
       <StatusBar backgroundColor={COLORS.background} />
       <View style={styles.header}>
-        <Text style={styles.headerText}>Login to Get Started</Text>
+        <Text style={styles.headerText}>Welcome Back!</Text>
+        <Text style={styles.subHeaderText}>
+          Log in to manage your family hierarchy
+        </Text>
       </View>
 
       <View style={styles.formContainer}>
@@ -79,19 +96,32 @@ const Login = () => {
         />
 
         <Text style={styles.label}>Password</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Enter your password"
-          placeholderTextColor="#aaa"
-          secureTextEntry={true}
-          value={form.password}
-          onChangeText={(value) => setForm({ ...form, password: value })}
-        />
+        <View style={styles.passwordContainer}>
+          <TextInput
+            style={[styles.input, { flex: 1 }]}
+            placeholder="Enter your password"
+            placeholderTextColor="#aaa"
+            secureTextEntry={!showPassword}
+            value={form.password}
+            onChangeText={(value) => setForm({ ...form, password: value })}
+          />
+          <TouchableOpacity
+            style={styles.eyeButton}
+            onPress={() => setShowPassword(!showPassword)}
+          >
+            <Ionicons
+              name={showPassword ? "eye" : "eye-off"}
+              size={20}
+              color="#aaa"
+            />
+          </TouchableOpacity>
+        </View>
 
         <CustomButton
           title="Login"
           onPress={onLoginPress}
           style={styles.button}
+          isLoading={loading}
         />
 
         <Link href="/(auth)/signup" style={styles.link}>
@@ -109,28 +139,39 @@ const styles = StyleSheet.create({
     backgroundColor: "#ffffff",
   },
   header: {
-    height: 200,
+    height: 250,
     backgroundColor: COLORS.background,
-    justifyContent: "flex-end",
+    justifyContent: "center",
+    alignItems: "center",
     padding: 20,
   },
   headerText: {
-    fontSize: 24,
+    fontSize: 28,
     color: "#ffffff",
-    fontWeight: "600",
+    fontWeight: "700",
+  },
+  subHeaderText: {
+    fontSize: 16,
+    color: "white",
+    marginTop: 10,
+    textAlign: "center",
   },
   formContainer: {
     padding: 20,
     backgroundColor: "#ffffff",
     borderTopLeftRadius: 30,
     borderTopRightRadius: 30,
-    marginTop: -20,
+    marginTop: -30,
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 5,
   },
   label: {
     fontSize: 16,
     color: "#333",
     marginBottom: 5,
-    fontWeight: "500",
+    fontWeight: "600",
   },
   input: {
     backgroundColor: "#f9f9f9",
@@ -141,6 +182,17 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     fontSize: 14,
     color: "#333",
+  },
+  passwordContainer: {
+    position: "relative",
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  eyeButton: {
+    paddingHorizontal: 8,
+    position: "absolute",
+    right: 0,
+    top: "20%",
   },
   button: {
     backgroundColor: COLORS.background,
@@ -157,7 +209,6 @@ const styles = StyleSheet.create({
   },
   linkHighlight: {
     color: COLORS.background,
-
     fontWeight: "600",
   },
 });

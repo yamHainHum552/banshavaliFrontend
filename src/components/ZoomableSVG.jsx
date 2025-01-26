@@ -1,52 +1,49 @@
 import React from "react";
-import { View } from "react-native";
 import Svg from "react-native-svg";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
-  withTiming,
+  withSpring,
 } from "react-native-reanimated";
-
-const ZoomableSvg = ({ children }) => {
-  const scale = useSharedValue(1);
-  const translateX = useSharedValue(0);
+const ZoomableSvg = ({ children, scale }) => {
+  const translateX = useSharedValue(0); // Horizontal pan
   const translateY = useSharedValue(0);
+  // const panOffsetX = useSharedValue(0);
+  // const panOffsetY = useSharedValue(0);
 
-  const panOffsetX = useSharedValue(0);
-  const panOffsetY = useSharedValue(0);
-
-  // Pinch Gesture (Zoom)
+  // Gesture: Pinch for zoom
   const pinchGesture = Gesture.Pinch().onUpdate((event) => {
-    scale.value = Math.max(1, Math.min(5, event.scale));
+    const zoomDelta = event.scale - 1;
+    const newScale = scale.value + zoomDelta * 0.2;
+    scale.value = Math.max(0.1, Math.min(5, newScale)); // Clamp between 1 and 5
   });
 
-  // Pan Gesture (Translation)
-  const panGesture = Gesture.Pan()
-    .onUpdate((event) => {
-      translateX.value = panOffsetX.value + event.translationX;
-      translateY.value = panOffsetY.value + event.translationY;
-    })
-    .onEnd(() => {
-      panOffsetX.value = translateX.value;
-      panOffsetY.value = translateY.value;
-    });
+  // // Gesture: Pan for dragging
+  // const panGesture = Gesture.Pan()
+  //   .onUpdate((event) => {
+  //     translateX.value = panOffsetX.value + event.translationX;
+  //     translateY.value = panOffsetY.value + event.translationY;
+  //   })
+  //   .onEnd(() => {
+  //     panOffsetX.value = translateX.value;
+  //     panOffsetY.value = translateY.value;
+  //   });
 
-  // Combine Pinch and Pan Gestures
-  const composedGesture = Gesture.Simultaneous(pinchGesture, panGesture);
+  // const composedGesture = Gesture.Simultaneous(pinchGesture, panGesture);
+  const composedGesture = Gesture.Simultaneous(pinchGesture);
 
-  // Animated Style
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [
-      { scale: withTiming(scale.value) },
-      { translateX: withTiming(translateX.value) },
-      { translateY: withTiming(translateY.value) },
+      { scale: withSpring(scale.value, { damping: 10, stiffness: 100 }) },
+      { translateX: translateX.value },
+      { translateY: translateY.value },
     ],
   }));
 
   return (
     <GestureDetector gesture={composedGesture}>
-      <Animated.View style={[{ flex: 1 }, animatedStyle]}>
+      <Animated.View style={[{ flex: 1, overflow: "hidden" }, animatedStyle]}>
         <Svg height="100%" width="100%">
           {children}
         </Svg>
